@@ -1,0 +1,193 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Safety Monitoring Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body {
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .video-container {
+            margin-top: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            background-color: #000;
+        }
+        .video-feed {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .detection-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        .violation-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+        }
+        .standard-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            background-color: #e2e3e5;
+            border: 1px solid #d6d8db;
+        }
+        .fps-counter {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            padding: 5px 10px;
+            border-radius: 4px;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .color-box {
+            width: 15px;
+            height: 15px;
+            margin-right: 5px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12">
+                <h2 class="text-center mb-4">Safety Monitoring Dashboard</h2>
+            </div>
+        </div>
+        
+        <!-- Class Legend -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="detection-panel">
+                    <h5 class="mb-3">Detection Classes</h5>
+                    <div class="legend">
+                        {% for class_id, config in class_config.items() %}
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color: rgb{{ config['color'][::-1] }}"></div>
+                            <span>{{ config['name'] }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-8">
+                <div class="video-container">
+                    <img id="video-feed" class="video-feed" alt="Video stream">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <!-- Violations Panel -->
+                <div class="detection-panel">
+                    <h4 class="text-danger">Safety Violations</h4>
+                    <div id="violations-container"></div>
+                </div>
+                
+                <!-- Standard Detections Panel -->
+                <div class="detection-panel">
+                    <h4>Standard Detections</h4>
+                    <div id="standard-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="fps-counter" class="fps-counter">FPS: 0</div>
+
+    <script>
+        const socket = io();
+        const videoFeed = document.getElementById('video-feed');
+        const violationsContainer = document.getElementById('violations-container');
+        const standardContainer = document.getElementById('standard-container');
+        const fpsCounter = document.getElementById('fps-counter');
+        
+        let frameCount = 0;
+        let lastTime = performance.now();
+        
+        socket.on('frame', function(data) {
+            // Update video feed
+            videoFeed.src = `data:image/jpeg;base64,${data.frame}`;
+            
+            // Update violations
+            violationsContainer.innerHTML = '';
+            if (data.detections.violations.length === 0) {
+                violationsContainer.innerHTML = '<p>No safety violations detected.</p>';
+            } else {
+                data.detections.violations.forEach(detection => {
+                    const alert = document.createElement('div');
+                    alert.className = 'violation-item';
+                    alert.innerHTML = `
+                        <strong>${detection.label}</strong>
+                        <br>
+                        Confidence: ${(detection.confidence * 100).toFixed(1)}%
+                    `;
+                    violationsContainer.appendChild(alert);
+                });
+            }
+            
+            // Update standard detections
+            standardContainer.innerHTML = '';
+            if (data.detections.standard.length === 0) {
+                standardContainer.innerHTML = '<p>No standard objects detected.</p>';
+            } else {
+                data.detections.standard.forEach(detection => {
+                    const item = document.createElement('div');
+                    item.className = 'standard-item';
+                    item.innerHTML = `
+                        <strong>${detection.label}</strong>
+                        <br>
+                        Confidence: ${(detection.confidence * 100).toFixed(1)}%
+                    `;
+                    standardContainer.appendChild(item);
+                });
+            }
+            
+            // Update FPS counter
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                fpsCounter.textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+        });
+        
+        socket.on('connect', function() {
+            console.log('Connected to server');
+        });
+        
+        socket.on('disconnect', function() {
+            console.log('Disconnected from server');
+        });
+    </script>
+</body>
+</html>
